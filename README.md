@@ -4,6 +4,8 @@
 
 A Lovelace custom card for [custom component Grocy](https://github.com/custom-components/grocy) and [Grocy-Pro](https://github.com/DonTranQuiL/grocy-pro) in Home Assistant.
 
+> **Credits:** This card was originally created by [Isabella Alström (@isabellaalstrom)](https://github.com/isabellaalstrom). This repository is a fork of the original [isabellaalstrom/lovelace-grocy-chores-card](https://github.com/isabellaalstrom/lovelace-grocy-chores-card). All credit for the original work goes to the original author and the project's contributors.
+
 <img src="https://github.com/clarinetJWD/lovelace-grocy-chores-card/blob/master/grocy-chores-card.png" alt="Grocy Chores Card" />
 
 **This card reqires [card tools](https://github.com/thomasloven/lovelace-card-tools).**
