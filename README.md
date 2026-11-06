@@ -2,7 +2,7 @@
 
 # grocy-chores-card
 
-A Lovelace custom card for [custom component Grocy](https://github.com/custom-components/grocy) in Home Assistant.
+A Lovelace custom card for [custom component Grocy](https://github.com/custom-components/grocy) and [Grocy-Pro](https://github.com/DonTranQuiL/grocy-pro) in Home Assistant.
 
 <img src="https://github.com/clarinetJWD/lovelace-grocy-chores-card/blob/master/grocy-chores-card.png" alt="Grocy Chores Card" />
 
@@ -78,6 +78,7 @@ views:
 | description_max_length       | number      | **Optional** |          | When set and `show_description` is set, truncate shown descriptions to the number of characters specified. |
 | fixed_tiling_size            | number      | **Optional** |          | When set, provides a fixed value to the masonry tiling algorithm for card size, where 1 unit equals 50 pixels. When unset, calculate the size dynamically from the number of items in the todo list. Setting the value will give a more consistent layout of masonry elements, though they may not be well balanced. When unset, the cards will be more compactly tiled for layout, but may move around on page refresh as list length changes.
 | custom_sort            | string/map      | **Optional** |          | Modifies the sort order. See [here](#custom_sort) for details.
+| service_domain               | string      | **Optional** | auto     | Domain of the Grocy actions the card calls. Detected automatically per action: `grocy` for [custom-components/grocy](https://github.com/custom-components/grocy) or `grocy_pro` for [grocy-pro](https://github.com/DonTranQuiL/grocy-pro), whichever provides the action (`grocy` wins if both do). Set it only to force a specific integration, e.g. `service_domain: grocy_pro`. |
 ## Advanced options
 It is possible to translate the following English strings in the card to whatever you like.
 
@@ -251,7 +252,3 @@ git remote add upstream https://github.com/isabellaalstrom/lovelace-grocy-chores
 6. Copy the compiled card in the `output/` folder to your Home Assistant installation and update the dashboard resources to point to it. Make sure the cache is cleared each time you try updating with new changes.
 7. Push the changes back to your GitHub origin, and open a pull request if you want to contribute them to the main repository.
 ---
-
-Like my work and want to say thanks? Do it here:
-
-<a href="https://www.buymeacoffee.com/iq1f96D" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/purple_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>

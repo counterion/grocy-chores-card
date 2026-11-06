@@ -17,13 +17,24 @@ class GrocyChoresCard extends LitElement {
     }
 
     async loadRescheduleElements() {
-        if(!customElements.get("ha-dialog") || !customElements.get("ha-time-input")) {
+        if(!customElements.get("ha-dialog") || !customElements.get("ha-time-input") || !customElements.get("ha-date-input")) {
             const cardHelpers = await window.loadCardHelpers();
             if(!customElements.get("ha-dialog")) {
                 await cardHelpers.importMoreInfoDialog();
             }
             if(!customElements.get("ha-time-input")) {
-                await cardHelpers.importMoreInfoControl("time");
+                try {
+                    await cardHelpers.importMoreInfoControl("time");
+                } catch (e) {
+                    console.warn("grocy-chores-card: could not load ha-time-input, using native time input", e);
+                }
+            }
+            if(!customElements.get("ha-date-input")) {
+                try {
+                    await cardHelpers.importMoreInfoControl("date");
+                } catch (e) {
+                    console.warn("grocy-chores-card: could not load ha-date-input, using native date input", e);
+                }
             }
         }
     }
@@ -809,7 +820,7 @@ class GrocyChoresCard extends LitElement {
             userId = this._getUserId();
         }
         
-        this._hass.callService("grocy", "execute_chore", {
+        this._callGrocyService("execute_chore", {
             chore_id: item.id, done_by: userId
         });
         this._showTrackedToast(item.name);
@@ -819,10 +830,30 @@ class GrocyChoresCard extends LitElement {
         // Hide the task on the next render, for better visual feedback
         this.local_cached_hidden_items.push(`task${taskId}`);
         this.requestUpdate();
-        this._hass.callService("grocy", "complete_task", {
+        this._callGrocyService("complete_task", {
             task_id: taskId
         });
         this._showTrackedToast(taskName);
+    }
+
+    // Grocy integrations register their actions under different domains:
+    // custom-components/grocy uses "grocy", grocy-pro uses "grocy_pro".
+    // Use the configured domain, otherwise the first one that provides the action.
+    _grocyDomain(service) {
+        if (this.config && this.config.service_domain) {
+            return this.config.service_domain;
+        }
+        const services = (this._hass && this._hass.services) || {};
+        const candidates = ["grocy", "grocy_pro"];
+        const withService = candidates.find(d => services[d] && services[d][service]);
+        if (withService) {
+            return withService;
+        }
+        return candidates.find(d => services[d]) || "grocy";
+    }
+
+    _callGrocyService(service, data) {
+        return this._hass.callService(this._grocyDomain(service), service, data);
     }
 
     async _openRescheduleDialog(item) {
@@ -910,7 +941,7 @@ class GrocyChoresCard extends LitElement {
                     next_execution_assigned_to_user_id: String(userId)
                 };
                 
-                await this._hass.callService("grocy", "update_generic", {
+                await this._callGrocyService("update_generic", {
                     entity_type: "chores",
                     object_id: item.id,
                     data: chorePayload
@@ -937,7 +968,7 @@ class GrocyChoresCard extends LitElement {
                     due_date: originalTask.due_date || ""
                 };
 
-                await this._hass.callService("grocy", "update_generic", {
+                await this._callGrocyService("update_generic", {
                     entity_type: "tasks",
                     object_id: item.id,
                     data: taskData
@@ -1015,7 +1046,7 @@ class GrocyChoresCard extends LitElement {
                 }
                 
                 // Use Grocy service to update the chore
-                await this._hass.callService("grocy", "update_generic", {
+                await this._callGrocyService("update_generic", {
                     entity_type: "chores",
                     object_id: this._rescheduleItem.id,
                     data: {
@@ -1046,7 +1077,7 @@ class GrocyChoresCard extends LitElement {
                 };
 
                 // Use Grocy service to update the task
-                await this._hass.callService("grocy", "update_generic", {
+                await this._callGrocyService("update_generic", {
                     entity_type: "tasks",
                     object_id: this._rescheduleItem.id,
                     data: taskData
@@ -1075,7 +1106,8 @@ class GrocyChoresCard extends LitElement {
             return;
         }
 
-        const dateStr = this.shadowRoot.getElementById('reschedule-date').value;
+        const dateInput = this.shadowRoot.getElementById('reschedule-date');
+        const dateStr = (dateInput && dateInput.value) || this._rescheduleDate;
 
         if (!dateStr) {
             alert(this._translate("Date is required"));
@@ -1086,7 +1118,7 @@ class GrocyChoresCard extends LitElement {
             if (this._rescheduleItem.__type === "chore") {
                 // For chores: combine date and time into "YYYY-MM-DD HH:MM:SS"
                 const timeInput = this.shadowRoot.getElementById('reschedule-time');
-                const timeStr = timeInput ? timeInput.value : null;
+                const timeStr = (timeInput && timeInput.value) || this._rescheduleTime;
                 // ha-time-input returns "HH:MM" format, we need to add seconds
                 let dateTimeStr;
                 if (timeStr && timeStr.trim()) {
@@ -1113,7 +1145,7 @@ class GrocyChoresCard extends LitElement {
                 }
                 
                 // Use Grocy service to update the chore
-                await this._hass.callService("grocy", "update_generic", {
+                await this._callGrocyService("update_generic", {
                     entity_type: "chores",
                     object_id: this._rescheduleItem.id,
                     data: {
@@ -1146,7 +1178,7 @@ class GrocyChoresCard extends LitElement {
                 };
 
                 // Use Grocy service to update the task
-                await this._hass.callService("grocy", "update_generic", {
+                await this._callGrocyService("update_generic", {
                     entity_type: "tasks",
                     object_id: this._rescheduleItem.id,
                     data: taskData
@@ -1204,29 +1236,97 @@ class GrocyChoresCard extends LitElement {
         const displayText = hasDescription ? description : this._translate("No description found.");
         const showAssignButton = this._shouldShowAssignToMe();
 
+        const title = this._descriptionItem.__filtered_name ?? this._descriptionItem.name;
+
         return html`
             <ha-dialog
                 open
-                .heading=${this._descriptionItem.__filtered_name ?? this._descriptionItem.name}
-                @closed=${() => this._closeDescriptionDialog()}>
+                .heading=${title}
+                .headerTitle=${title}
+                @closed=${(ev) => { if (ev.target === ev.currentTarget) this._closeDescriptionDialog(); }}>
                 <div style="white-space: pre-line; padding: 16px 0;">
                     ${displayText}
                 </div>
-                ${showAssignButton ? html`
-                    <ha-button 
-                        slot="secondaryAction" 
-                        @click=${() => this._assignToMe()}
-                        outlined>
-                        ${this._translate("Assign to me")}
+                ${this._renderDialogActions(html`
+                    ${showAssignButton ? html`
+                        <ha-button
+                            @click=${() => this._assignToMe()}
+                            appearance="plain"
+                            outlined>
+                            ${this._translate("Assign to me")}
+                        </ha-button>
+                    ` : nothing}
+                    <ha-button
+                        @click=${() => this._closeDescriptionDialog()}
+                        appearance="filled"
+                        raised>
+                        ${this._translate("OK")}
                     </ha-button>
-                ` : nothing}
-                <ha-button 
-                    slot="primaryAction" 
-                    @click=${() => this._closeDescriptionDialog()}
-                    raised>
-                    ${this._translate("OK")}
-                </ha-button>
+                `)}
             </ha-dialog>
+        `;
+    }
+
+    // Action buttons are rendered in the dialog body instead of named slots:
+    // older ha-dialog (mwc) used primaryAction/secondaryAction slots, newer
+    // ha-dialog only has a footer slot, so slotted buttons silently disappear.
+    _renderDialogActions(buttons) {
+        return html`
+            <div style="display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px;">
+                ${buttons}
+            </div>
+        `;
+    }
+
+    _renderRescheduleDateInput() {
+        // Prefer HA's date picker; fall back to the browser's native one if it could not be loaded.
+        if (customElements.get("ha-date-input")) {
+            return html`
+                <ha-date-input
+                    id="reschedule-date"
+                    .locale=${this._hass.locale}
+                    .label=${this._translate("Date")}
+                    .value=${this._rescheduleDate}
+                    @value-changed=${(ev) => { this._rescheduleDate = ev.detail.value; }}>
+                </ha-date-input>
+            `;
+        }
+        return html`
+            <label style="display: flex; flex-direction: column; gap: 4px; color: var(--secondary-text-color);">
+                ${this._translate("Date")}
+                <input
+                    id="reschedule-date"
+                    type="date"
+                    style="padding: 8px; font-size: 16px; color: var(--primary-text-color); background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 4px;"
+                    .value=${this._rescheduleDate || ""}
+                    @change=${(ev) => { this._rescheduleDate = ev.target.value; }}>
+            </label>
+        `;
+    }
+
+    _renderRescheduleTimeInput() {
+        if (customElements.get("ha-time-input")) {
+            return html`
+                <ha-time-input
+                    id="reschedule-time"
+                    .locale=${this._hass.locale}
+                    .label=${this._translate("Time")}
+                    .value=${this._rescheduleTime}
+                    .format=${this.use_24_hours ? 24 : 12}
+                    @value-changed=${(ev) => { this._rescheduleTime = ev.detail.value; }}>
+                </ha-time-input>
+            `;
+        }
+        return html`
+            <label style="display: flex; flex-direction: column; gap: 4px; color: var(--secondary-text-color);">
+                ${this._translate("Time")}
+                <input
+                    id="reschedule-time"
+                    type="time"
+                    style="padding: 8px; font-size: 16px; color: var(--primary-text-color); background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 4px;"
+                    .value=${this._rescheduleTime || ""}
+                    @change=${(ev) => { this._rescheduleTime = ev.target.value; }}>
+            </label>
         `;
     }
 
@@ -1242,7 +1342,8 @@ class GrocyChoresCard extends LitElement {
             <ha-dialog
                 open
                 .heading=${heading}
-                @closed=${() => this._closeRescheduleDialog()}>
+                .headerTitle=${heading}
+                @closed=${(ev) => { if (ev.target === ev.currentTarget) this._closeRescheduleDialog(); }}>
                 <div>
                     <!-- Skip to next day button -->
                     <div style="margin-bottom: 16px;">
@@ -1263,34 +1364,25 @@ class GrocyChoresCard extends LitElement {
                     </div>
                     
                     <!-- Date and time pickers -->
-                    <ha-date-input
-                        id="reschedule-date"
-                        .locale=${this._hass.locale}
-                        .label=${this._translate("Date")}
-                        .value=${this._rescheduleDate}>
-                    </ha-date-input>
-                    ${isChore ? html`
-                        <ha-time-input
-                            id="reschedule-time"
-                            .locale=${this._hass.locale}
-                            .label=${this._translate("Time")}
-                            .value=${this._rescheduleTime}
-                            .format=${this.use_24_hours ? 24 : 12}>
-                        </ha-time-input>
-                    ` : nothing}
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        ${this._renderRescheduleDateInput()}
+                        ${isChore ? this._renderRescheduleTimeInput() : nothing}
+                    </div>
                 </div>
-                <ha-button 
-                    slot="primaryAction" 
-                    @click=${() => this._doReschedule()}
-                    raised>
-                    ${this._translate("Reschedule")}
-                </ha-button>
-                <ha-button 
-                    slot="secondaryAction" 
-                    @click=${() => this._closeRescheduleDialog()}
-                    outlined>
-                    ${this._translate("Cancel")}
-                </ha-button>
+                ${this._renderDialogActions(html`
+                    <ha-button
+                        @click=${() => this._closeRescheduleDialog()}
+                        appearance="plain"
+                        outlined>
+                        ${this._translate("Cancel")}
+                    </ha-button>
+                    <ha-button
+                        @click=${() => this._doReschedule()}
+                        appearance="filled"
+                        raised>
+                        ${this._translate("Reschedule")}
+                    </ha-button>
+                `)}
             </ha-dialog>
         `;
     }
@@ -1300,7 +1392,7 @@ class GrocyChoresCard extends LitElement {
             if (item.__type === "chore") {
                 // Use Grocy service to execute chore with skipped flag
                 // The service will handle tracked_time automatically (uses next_estimated_execution_time when skipped)
-                await this._hass.callService("grocy", "execute_chore", {
+                await this._callGrocyService("execute_chore", {
                     chore_id: item.id,
                     done_by: this._getUserId(),
                     skipped: true
@@ -1350,7 +1442,7 @@ class GrocyChoresCard extends LitElement {
                 };
 
                 // Use Grocy service to update the task
-                await this._hass.callService("grocy", "update_generic", {
+                await this._callGrocyService("update_generic", {
                     entity_type: "tasks",
                     object_id: item.id,
                     data: taskData
@@ -1553,7 +1645,7 @@ class GrocyChoresCard extends LitElement {
         taskData["category_id"] = taskCategory;
         taskData["assigned_to_user_id"] = this._getUserId();
 
-        this._hass.callService("grocy", "add_generic", {
+        this._callGrocyService("add_generic", {
             entity_type: "tasks", data: taskData
         });
 
